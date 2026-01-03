@@ -1,0 +1,56 @@
+name: Build Android Client (Patched)
+
+on:
+  workflow_dispatch: # 允许手动点击按钮触发编译
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v2
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-32'
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26b
+
+      - name: Install deps
+        run: cargo install cargo-apk
+
+        # Create folder without content to make the build succeed
+      - run: mkdir -p deps/android_openxr/arm64-v8a
+
+      # === 补丁: 修复 Qualcomm VRX 兼容性 ===
+      - name: Patch OpenXR Loader for Qualcomm VRX
+        run: |
+          find ~/.cargo -name "android_loader.cpp" -type f -exec sed -i 's/"org.khronos.openxr.runtime_broker",/"org.khronos.openxr.runtime_broker", "com.qualcomm.qti.openxrruntime_broker",/g' {} +
+          echo "Patch applied!"
+      # ======================================
+
+      - name: Build client
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        working-directory: ./alvr/client_openxr
+        run: cargo xtask build-client
+
+      # === 新增: 上传编译好的 APK ===
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: alvr_client_android_patched
+          path: build/alvr_client_quest/*.apk
