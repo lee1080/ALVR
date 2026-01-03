@@ -39,6 +39,29 @@ jobs:
         run: cargo xtask prepare-deps --platform android
       # =================================================
 
+      # === 修复: 确保 libopenxr_loader.so 在正确的位置 ===
+      - name: Ensure OpenXR Loader Exists
+        run: |
+          echo "Searching for libopenxr_loader.so..."
+          find . -name "libopenxr_loader.so"
+          
+          # 创建 Cargo.toml 预期的目录 (基于原始 workflow 的推断)
+          mkdir -p deps/android_openxr/arm64-v8a
+          
+          # 将找到的库复制到该目录 (覆盖)
+          # 注意: prepare-deps 可能把它放在了 deps/android/ 或其他地方
+          find . -name "libopenxr_loader.so" -exec cp {} deps/android_openxr/arm64-v8a/ \;
+          
+          echo "Verifying contents of deps/android_openxr/arm64-v8a:"
+          ls -l deps/android_openxr/arm64-v8a/
+          
+          # 如果文件不存在，构建将失败
+          if [ ! -f deps/android_openxr/arm64-v8a/libopenxr_loader.so ]; then
+            echo "Error: libopenxr_loader.so not found!"
+            exit 1
+          fi
+      # =================================================
+
       # === 补丁: 修复 Qualcomm VRX 兼容性 ===
       - name: Patch OpenXR Loader for Qualcomm VRX
         run: |
