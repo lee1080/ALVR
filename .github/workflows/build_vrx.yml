@@ -32,11 +32,19 @@ jobs:
       - name: Install deps
         run: cargo install cargo-apk
 
-      - run: mkdir -p deps/android_openxr/arm64-v8a
+      # === 关键步骤: 准备依赖 (下载 OpenXR loader 等) ===
+      - name: Prepare Android Deps
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: cargo xtask prepare-deps --platform android
+      # =================================================
 
       # === 补丁: 修复 Qualcomm VRX 兼容性 ===
       - name: Patch OpenXR Loader for Qualcomm VRX
         run: |
+          # 先尝试一次构建以触发 cargo 下载依赖，否则 find 可能找不到文件
+          cargo fetch --target aarch64-linux-android
+          
           find ~/.cargo -name "android_loader.cpp" -type f -exec sed -i 's/"org.khronos.openxr.runtime_broker",/"org.khronos.openxr.runtime_broker", "com.qualcomm.qti.openxrruntime_broker",/g' {} +
           echo "Patch applied!"
       # ======================================
@@ -45,15 +53,12 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         working-directory: ./alvr/client_openxr
-        # 使用 --release 以获得更好的性能，并确保生成 APK
         run: cargo xtask build-client --release
 
-      # === 上传编译好的 APK ===
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: alvr_client_android_patched
-          # 尝试匹配所有可能的输出路径，确保能找到 APK
           path: |
             build/alvr_client_quest/*.apk
             target/release/apk/*.apk
